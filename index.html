@@ -1,252 +1,118 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Gravity Variable Lab — Interactive</title>
-  <link rel="stylesheet" href="styles.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Key Tunes</title>
+<style>
+  :root {
+    --bg: #1b1d22;
+    --key: #2a2d35;
+    --key-edge: #14161a;
+    --text: #e8e6e1;
+    --muted: #8b8f98;
+    --hit: #f2b84b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 28px;
+    padding: 24px;
+  }
+  h1 { margin: 0; font-size: 1.4rem; font-weight: 600; }
+  p { margin: 0; color: var(--muted); font-size: .95rem; text-align: center; }
+  .board {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    gap: 12px;
+    width: min(760px, 100%);
+  }
+  .key {
+    aspect-ratio: 1;
+    border: 0;
+    border-radius: 12px;
+    background: var(--key);
+    color: var(--text);
+    font-size: 1.8rem;
+    font-weight: 600;
+    box-shadow: 0 5px 0 var(--key-edge);
+    cursor: pointer;
+    transition: transform .06s, box-shadow .06s, background .06s;
+  }
+  .key:focus-visible { outline: 2px solid var(--hit); outline-offset: 3px; }
+  .key.active {
+    transform: translateY(4px);
+    box-shadow: 0 1px 0 var(--key-edge);
+    background: var(--hit);
+    color: #1b1d22;
+  }
+  .key.missing { opacity: .35; }
+</style>
 </head>
 <body>
-  <header>
-    <h1>Gravity Variable Lab</h1>
-    <p class="lead">Visualize Newton's Universal Law of Gravitation and explore how mass and distance affect gravitational force.</p>
-  </header>
+  <h1>Key Tunes</h1>
+  <p>Press a key on your keyboard, or click a key below.</p>
+  <div class="board" id="board"></div>
+  <p id="status"></p>
 
-  <div class="tab-bar" role="tablist" aria-label="Games tabs">
-    <button class="tab-button active" id="tabGravity" data-show="gravity">Gravity Lab</button>
-    <button class="tab-button" id="tabFreefall" data-show="freefall">Freefall Challenge</button>
-    <button class="tab-button" id="tabPlanet" data-show="planet">Module 2: Planetary Jumper</button>
-    <button class="tab-button" id="tabModule4" data-show="module4">Module 4: Gravity in Action</button>
-  </div>
+<script>
+  // Keys that have a matching .wav file in the same folder as this index.html
+  const KEYS = [";", "a", "d", "e", "f", "g", "h", "i", "j", "k", "l", "o", "p", "s", "t", "u", "w", "y"];
 
-  <main class="container">
-    <section class="controls">
-      <h2>Controls</h2>
-      <div class="sliders">
-        <div class="slider-row">
-          <label for="m1">Mass m1:</label>
-          <input id="m1" type="range" min="0.1" max="10" step="0.1" value="1">
-          <output id="m1Val">1.0</output>
-        </div>
-        <div class="slider-row">
-          <label for="m2">Mass m2:</label>
-          <input id="m2" type="range" min="0.1" max="10" step="0.1" value="1">
-          <output id="m2Val">1.0</output>
-        </div>
-        <div class="slider-row">
-          <label for="d">Distance d:</label>
-          <input id="d" type="range" min="0.001" max="10" step="0.1" value="1">
-          <output id="dVal">1.000</output>
-        </div>
+  // ";" can't be used safely as a filename on every system.
+  // If your file is literally named ";.wav", leave this as is.
+  const FILE_FOR = { ";": ";.wav" };
+  const fileName = k => FILE_FOR[k] || (k + ".wav");
 
-        <div class="buttons">
-          <button id="resetBtn">Reset to baseline (1,1,1)</button>
-          <button id="doubleM1">Double m1</button>
-          <button id="doubleBoth">Double both masses</button>
-          <button id="halfDistance">Halve distance</button>
-          <button id="doubleDistance">Double distance</button>
-        </div>
-      </div>
-    </section>
-    
-    <section class="freefall">
-      <h2>Freefall Fact-Check Challenge</h2>
-      <p>Explore how air resistance affects falling objects. Choose an object and a drop height, then run the drop to compare the ideal freefall time (no air) with the observed time (with air resistance).</p>
+  const board = document.getElementById("board");
+  const status = document.getElementById("status");
+  const audio = {};
+  const buttons = {};
 
-      <div class="freefall-controls two-panel">
-        <div style="width:100%; display:flex; justify-content:center; margin-bottom:8px;">
-          <button id="runBoth" style="padding:8px 12px; border-radius:8px; font-weight:700;">Run Both Drops</button>
-        </div>
-        <div class="freefall-panel" aria-label="Drop A">
-          <h4>Drop A</h4>
-          <label for="height">Height (m):</label>
-          <input id="height" type="range" min="0.5" max="50" step="0.5" value="5">
-          <output id="heightVal">5.0</output>
+  KEYS.forEach(k => {
+    const a = new Audio(encodeURI(fileName(k)));
+    a.preload = "auto";
+    a.addEventListener("error", () => buttons[k].classList.add("missing"));
+    audio[k] = a;
 
-          <label for="objectSel">Object:</label>
-          <select id="objectSel">
-            <option value="stone">Stone (low air resistance)</option>
-            <option value="coin">Coin (low-medium)</option>
-            <option value="paper_crumpled">Paper, crumpled (medium)</option>
-            <option value="paper_flat">Paper, flat (high)</option>
-            <option value="feather">Feather (very high)</option>
-          </select>
+    const b = document.createElement("button");
+    b.className = "key";
+    b.textContent = k;
+    b.addEventListener("mousedown", () => play(k));
+    b.addEventListener("keydown", e => { if (e.key === " " || e.key === "Enter") e.preventDefault(); });
+    board.appendChild(b);
+    buttons[k] = b;
+  });
 
-          <label for="airOn" style="margin-left:6px;">Air:</label>
-          <select id="airOn">
-            <option value="air">Air</option>
-            <option value="vacuum">No air (vacuum)</option>
-          </select>
+  function play(k) {
+    const a = audio[k];
+    if (!a) return;
+    // Clone so quick repeated presses overlap instead of cutting off
+    const n = a.cloneNode();
+    n.play().catch(() => {
+      status.textContent = "Could not play " + fileName(k) + ". Check the file is in the same folder.";
+    });
+    const btn = buttons[k];
+    btn.classList.add("active");
+    setTimeout(() => btn.classList.remove("active"), 120);
+  }
 
-          <div class="ff-buttons">
-            <button id="resetDrop">Reset</button>
-          </div>
-
-          <div class="fall-area" id="fallArea" aria-live="polite">
-            <div class="fall-stage">
-              <div id="fallObject" class="fall-object" aria-hidden="true"></div>
-            </div>
-          </div>
-
-          <div class="ff-metrics">
-            <div>Ideal freefall time (no air): <strong id="tIdeal">0.00 s</strong></div>
-            <div>Approximate observed time: <strong id="tObserved">0.00 s</strong></div>
-            <div id="ffExplanation">Explanation will appear here after running the drop.</div>
-          </div>
-        </div>
-
-        <div class="freefall-panel" aria-label="Drop B">
-          <h4>Drop B</h4>
-          <label for="height2">Height (m):</label>
-          <input id="height2" type="range" min="0.5" max="50" step="0.5" value="5">
-          <output id="heightVal2">5.0</output>
-
-          <label for="objectSel2">Object:</label>
-          <select id="objectSel2">
-            <option value="stone">Stone (low air resistance)</option>
-            <option value="coin">Coin (low-medium)</option>
-            <option value="paper_crumpled">Paper, crumpled (medium)</option>
-            <option value="paper_flat">Paper, flat (high)</option>
-            <option value="feather">Feather (very high)</option>
-          </select>
-
-          <label for="airOn2" style="margin-left:6px;">Air:</label>
-          <select id="airOn2">
-            <option value="air">Air</option>
-            <option value="vacuum">No air (vacuum)</option>
-          </select>
-
-          <div class="ff-buttons">
-            <button id="resetDrop2">Reset</button>
-          </div>
-
-          <div class="fall-area" id="fallArea2" aria-live="polite">
-            <div class="fall-stage">
-              <div id="fallObject2" class="fall-object" aria-hidden="true"></div>
-            </div>
-          </div>
-
-          <div class="ff-metrics">
-            <div>Ideal freefall time (no air): <strong id="tIdeal2">0.00 s</strong></div>
-            <div>Approximate observed time: <strong id="tObserved2">0.00 s</strong></div>
-            <div id="ffExplanation2">Explanation will appear here after running the drop.</div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="planetary hidden">
-      <h2>Module 2: The Planetary Jumper &amp; Weight Calculator</h2>
-      <p>Explore how weight changes on different celestial bodies and watch an avatar jump higher or lower depending on gravity.</p>
-
-      <div class="planet-controls">
-        <label for="playerMass">Mass (kg):</label>
-        <input id="playerMass" type="number" min="1" max="300" step="0.1" value="70">
-        <label for="planetSel">Planet:</label>
-        <select id="planetSel">
-          <option value="earth">Earth (g ≈ 9.807 N/kg)</option>
-          <option value="moon">Moon (g ≈ 1.67 N/kg)</option>
-          <option value="jupiter">Jupiter (g ≈ 24.79 N/kg)</option>
-        </select>
-
-        <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
-          <button id="jumpBtn">Jump!</button>
-          <button id="resetJumpBtn">Reset</button>
-        </div>
-      </div>
-
-      <div class="planet-metrics" style="margin-top:12px;">
-        <div>Your weight on selected body: <strong id="weightN">0 N</strong></div>
-        <div>Equivalent weight on Earth: <strong id="weightEarth">0 N</strong></div>
-        <div id="planetExplanation" style="margin-top:6px;color:#334155;font-size:0.95rem"></div>
-      </div>
-
-      <div class="jump-area" style="margin-top:12px;">
-        <div class="jump-stage" id="jumpStage">
-          <div id="jumper" class="jumper" aria-hidden="true"></div>
-        </div>
-      </div>
-    </section>
-
-    <section class="module4 hidden">
-      <h2>Module 4: Gravity in Action Visualizers</h2>
-      <p>Animated scenes showing tides and orbital motion to help visualize gravitational effects.</p>
-
-      <div class="module4-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
-        <div class="tides-panel" style="background:#fff;padding:12px;border-radius:8px;">
-          <h3>Tides Animator</h3>
-          <p>Choose a tide configuration to see how Sun and Moon alignment affects sea level.</p>
-          <label for="tideMode">Tide mode:</label>
-          <select id="tideMode">
-            <option value="spring">Spring Tide (Sun+Moon aligned)</option>
-            <option value="neap">Neap Tide (Sun and Moon at right angles)</option>
-            <option value="perigee">Perigee (Moon near)</option>
-            <option value="apogee">Apogee (Moon far)</option>
-          </select>
-
-          <div class="tide-stage" id="tideStage" style="margin-top:10px;">
-            <div class="sky">
-              <div id="sun" class="sun"></div>
-              <div id="moon" class="moon"></div>
-              <div id="earth" class="earth"></div>
-            </div>
-            <div class="sea">
-              <div id="seaLevel" class="sea-level"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="orbit-panel" style="background:#fff;padding:12px;border-radius:8px;">
-          <h3>Orbital Path Visualizer</h3>
-          <p>Watch Earth orbit the Sun. Adjust speed and eccentricity to observe changes.</p>
-          <label for="orbitSpeed">Speed:</label>
-          <input id="orbitSpeed" type="range" min="0.1" max="3" step="0.1" value="1">
-          <label for="eccentricity">Eccentricity:</label>
-          <input id="eccentricity" type="range" min="0" max="0.6" step="0.01" value="0.0167">
-
-          <div class="orbit-stage" id="orbitStage" style="margin-top:10px;">
-            <svg id="orbitSvg" viewBox="0 0 300 240" preserveAspectRatio="xMidYMid meet"></svg>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="visualization">
-      <h2>Visualization</h2>
-      <div id="viz" aria-hidden="false">
-        <svg id="svg" viewBox="0 0 800 240" preserveAspectRatio="xMidYMid meet"></svg>
-      </div>
-
-      <div class="metrics">
-        <div>Calculated relative force (arbitrary units): <strong id="forceVal">1.00</strong></div>
-        <div>Relative to baseline (1,1,1): <strong id="relativeVal">1.00×</strong></div>
-      </div>
-
-      <div class="explain">
-        <h3>About</h3>
-        <p>We use a simplified proportional model: F &propto; (m1 * m2) / d<sup>2</sup>. This page shows the relative force when you change masses and distance. The visualization uses circle sizes to represent masses and a connecting "rope" whose thickness represents force.</p>
-      </div>
-    </section>
-
-    <section class="calculation">
-      <h2>Full Calculation (including G)</h2>
-      <p>This section shows the full numeric calculation using Newton's law: <strong>F = G * (m1 * m2) / d<sup>2</sup></strong>. For clarity we treat slider values as kilograms (kg) for masses and meters (m) for distance.</p>
-
-      <div class="calc-box">
-        <div>Gravitational constant: <strong>G = 6.67430 × 10<sup>-11</sup> N·m<sup>2</sup>/kg<sup>2</sup></strong></div>
-        <div>m1 = <strong id="m1Calc">1.0</strong> kg, m2 = <strong id="m2Calc">1.0</strong> kg, d = <strong id="dCalc">1.0</strong> m</div>
-        <pre id="calcSteps" aria-live="polite" style="background:#f7fafc;border:1px solid #e6eef7;padding:10px;border-radius:6px;margin-top:8px;">
-Step-by-step calculation will appear here.
-        </pre>
-        <div style="margin-top:8px;">Calculated gravitational force: <strong id="gForceVal">0.00 N</strong></div>
-      </div>
-    </section>
-  </main>
-
-  <footer>
-    <p>Created for classroom exploration — Gravity Variable Lab</p>
-  </footer>
-
-  <script src="script.js"></script>
+  document.addEventListener("keydown", e => {
+    if (e.repeat || e.ctrlKey || e.metaKey || e.altKey) return;
+    const k = e.key.toLowerCase();
+    if (audio[k]) {
+      e.preventDefault();
+      play(k);
+    }
+  });
+</script>
 </body>
 </html>
